@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directional Controls</title>
+    <style>
+        body {
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 85vh;
+            margin: 0;
+        }
+
+        *:not(input):not(textarea) {
+            -webkit-user-select: none; /* disable selection/Copy of UIWebView */
+            -webkit-touch-callout: none; /* disable the IOS popup when long-press on a link */
+			-webkit-appearance: none;  /* disable the IOS round buttons*/
+        }
+
+        .controls-table, .counter-table {
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .controls-table td, .counter-table td {
+            padding: 0;
+            border: 1px solid black;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .control-button {
+            font-size: 2vw;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            position: relative; /* Added for positioning pseudo-element */
+        }
+
+        .center-button::after {
+            content: '•'; /* Center dot */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2vw;
+            pointer-events: none; /* Ensure dot doesn't interfere with button events */
+        }
+
+        .center-button div {
+			border: 1px solid black;
+            position: absolute;
+            width: 50%;
+            height: 50%;
+        }
+
+        .top {
+            top: 0;
+            left: 25%;
+            width: 50%;
+            height: 50%;
+            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+        }
+
+        .bottom {
+            bottom: 0;
+            left: 25%;
+            width: 50%;
+            height: 50%;
+            clip-path: polygon(50% 100%, 100% 0%, 0% 0%);
+        }
+
+        .left {
+            left: 0;
+            top: 25%;
+            width: 50%;
+            height: 50%;
+            clip-path: polygon(0% 50%, 100% 0%, 100% 100%);
+        }
+
+        .right {
+            right: 0;
+            top: 25%;
+            width: 50%;
+            height: 50%;
+            clip-path: polygon(100% 50%, 0% 0%, 0% 100%);
+        }
+
+        .hidden-button {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .fixed-width-counter {
+            display: inline-block;
+            width: 5ch; /* Width for 5 characters */
+            text-align: right;
+            font-family: monospace; /* Use monospace font to ensure equal character width */
+        }
+    </style>
+</head>
+<body>
+	<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <table class="controls-table">
+        <tr>
+            <td><button id="upLeft" class="control-button" data-x="-1" data-y="1">↖</button></td>
+            <td><button id="up" class="control-button" data-x="0" data-y="1">↑</button></td>
+            <td><button id="upRight" class="control-button" data-x="1" data-y="1">↗</button></td>
+        </tr>
+        <tr>
+            <td><button id="left" class="control-button" data-x="-1" data-y="0">←</button></td>
+            <td>
+                <div id="center" class="center-button control-button" data-x="0" data-y="0">
+                    <div id="center" class="hidden-button top" data-x="0" data-y="1"></div>
+                    <div id="center" class="hidden-button bottom" data-x="0" data-y="-1"></div>
+                    <div id="center" class="hidden-button left" data-x="-1" data-y="0"></div>
+                    <div id="center" class="hidden-button right" data-x="1" data-y="0"></div>
+                </div>
+            </td>
+            <td><button id="right" class="control-button" data-x="1" data-y="0">→</button></td>
+        </tr>
+        <tr>
+            <td><button id="downLeft" class="control-button" data-x="-1" data-y="-1">↙</button></td>
+            <td><button id="down" class="control-button" data-x="0" data-y="-1">↓</button></td>
+            <td><button id="downRight" class="control-button" data-x="1" data-y="-1">↘</button></td>
+        </tr>
+    </table>
+
+    <table class="counter-table">
+        <tr>
+            <td>C</td>
+            <td><span id="cCounter" class="fixed-width-counter">00000</span></td>
+            <td>X</td>
+            <td><span id="xCounter" class="fixed-width-counter">00000</span></td>
+            <td>Y</td>
+            <td><span id="yCounter" class="fixed-width-counter">00000</span></td>
+        </tr>
+    </table>
+
+<script type="text/javascript">
+    // Variables for counters
+    var counters = {
+        c: 0,
+        x: 0,
+        y: 0
+    };
+
+
+
+	class stateDir {
+		constructor(k = "", c = 0, x = 0, y = 0) {
+			this.k = k;
+			this.c = c;
+			this.x = x;
+			this.y = y;
+		}
+		// Method to compare this object with another stateDir object
+		isEqual(other) {
+			return this.k === other.k &&
+				   this.c === other.c &&
+				   this.x === other.x &&
+				   this.y === other.y;
+		}
+		// Method to set the properties of this object to those of another Direction object
+		setEqual(other) {
+			this.k = other.k;
+			this.c = other.c;
+			this.x = other.x;
+			this.y = other.y;
+		}
+	}
+
+    // Variables for active directions
+	var activeDir = new stateDir();
+	var lastDir = new stateDir();
+	
+    // Variables to track if mouse is down and if it started in the center
+	let ws = new WebSocket('ws://' + location.host + '/connect-websocket');
+    var isMouseDown = false;
+	var isOverDir = false;
+    var startedInCenter = false;
+    var EnableXY = false;
+
+
+    // Function to update counters display
+    function updateCounters() {
+		var c_str= counters.c.toString().padStart(5, '0');
+		var x_str= counters.x.toString().padStart(5, '0');
+		var y_str= counters.y.toString().padStart(5, '0');
+        document.getElementById('cCounter').innerHTML = c_str;
+        document.getElementById('xCounter').innerHTML = x_str;
+        document.getElementById('yCounter').innerHTML = y_str;
+		
+    }
+
+    // Function to handle counting based on active directions
+    function handleCounting() {
+        if (isMouseDown && isOverDir) {
+			counters.c += activeDir.c;
+			counters.x += activeDir.x;
+			counters.y += activeDir.y;
+            updateCounters();
+        }
+		if (!activeDir.isEqual(lastDir)) {
+			ws.send(JSON.stringify(activeDir));
+			lastDir.setEqual(activeDir);
+		}
+
+} 
+	
+	// Function to detect if touch or mouse is within triangle or rectangle
+	function isTouchWithinElement(touch, element) {
+		var rect = element.getBoundingClientRect();
+		var x = touch.clientX - rect.left;
+		var y = touch.clientY - rect.top;
+		var width = rect.width;
+		var height = rect.height;
+
+		if (element.classList.contains('bottom')) {
+			return x > width / 2 - (width / 2) * (y / height) && x < width / 2 + (width / 2) * (y / height);
+		} else if (element.classList.contains('top')) {
+			return x > width / 2 - (width / 2) * ((height - y) / height) && x < width / 2 + (width / 2) * ((height - y) / height);
+		} else if (element.classList.contains('right')) {
+			return y > height / 2 - (height / 2) * (x / width) && y < height / 2 + (height / 2) * (x / width);
+		} else if (element.classList.contains('left')) {
+			return y > height / 2 - (height / 2) * ((width - x) / width) && y < height / 2 + (height / 2) * ((width - x) / width);
+		} else {
+			// Default to rectangle detection
+			return (
+				touch.clientX >= rect.left &&
+				touch.clientX <= rect.right &&
+				touch.clientY >= rect.top &&
+				touch.clientY <= rect.bottom
+			);
+		}
+	}
+
+    // Function to handle touch or mouse move event
+    function handleMove(event) {
+        var touch = event.touches ? event.touches[0] : event;
+        var buttons = document.querySelectorAll('.control-button, .hidden-button');
+        var touchOverButton = false;
+
+        buttons.forEach(button => {
+            if (isTouchWithinElement(touch, button)) {
+				touchOverButton = true;
+				if(activeDir.c === 1 && button.id !== 'center')
+					EnableXY = true;
+			
+				if(EnableXY) 
+				{
+					activeDir.x = parseInt(button.dataset.x, 10);
+					activeDir.y = parseInt(button.dataset.y, 10);
+				}
+            }
+        });
+
+		isOverDir = touchOverButton;
+        event.preventDefault();
+    }
+
+
+    // Function to handle direction press
+    function DirPressed(button) {
+        isMouseDown = true;
+		isOverDir = true;
+        if (button.id.startsWith('center')) {
+			activeDir.c = 1;
+			activeDir.x = 0;
+			activeDir.y = 0;
+            EnableXY = false;
+			isOverDir = true;
+        }
+		else
+		{
+			activeDir.c = 0;
+			activeDir.x = parseInt(button.dataset.x, 10);
+			activeDir.y = parseInt(button.dataset.y, 10);
+			EnableXY = true;
+		}
+    }
+
+    // Function to handle direction release
+    function DirRelease() {
+        isMouseDown = false;
+        EnableXY = false;
+        activeDir.c = 0;
+        activeDir.x = 0;
+        activeDir.y = 0;
+    }
+
+    // Function to setup button event listeners
+    function setupButton(button) {
+        button.addEventListener('mousedown', function (event) {
+            DirPressed(button);
+            event.preventDefault();
+        });
+
+        button.addEventListener('mouseup', function () {
+            DirRelease();
+        });
+
+        button.addEventListener('mouseleave', function (event) {
+            if (isMouseDown) {
+                handleMove(event);
+            } else {
+                DirRelease();
+            }
+        });
+
+        button.addEventListener('touchstart', function (event) {
+            DirPressed(button);
+            event.preventDefault();
+        });
+
+        button.addEventListener('touchend', function () {
+            DirRelease();
+        });
+
+        button.addEventListener('touchmove', handleMove);
+    }
+
+    // Function to adjust button sizes to be square
+    function adjustSize() {
+        const buttons = document.querySelectorAll('.control-button');
+        buttons.forEach(button => {
+            const buttonWidth = button.offsetWidth;
+            button.style.height = `${buttonWidth}px`;
+            button.style.fontSize = `${buttonWidth / 3}px`; // Adjust font size relative to button size
+        });
+    }
+
+    // Function to set width and height of controls-table
+    function setControlsTableSize() {
+        const controlsTable = document.querySelector('.controls-table');
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        const tableSize = Math.min(windowWidth, windowHeight) * 0.9; // Set table size to 90% of the smaller dimension
+
+        controlsTable.style.width = `${tableSize}px`;
+        controlsTable.style.height = `${tableSize}px`;
+    }
+
+    // Setup all buttons with their respective directions
+    document.querySelectorAll('.control-button, .hidden-button').forEach(setupButton);
+
+    // Adjust sizes on load and resize
+    window.addEventListener('load', () => {
+        setControlsTableSize();
+        adjustSize();
+    });
+    window.addEventListener('resize', () => {
+        setControlsTableSize();
+        adjustSize();
+    });
+
+    // Handle mousemove and touchmove globally
+    window.addEventListener('mousemove', function (event) {
+        if (isMouseDown) {
+            handleMove(event);
+        }
+    });
+
+    window.addEventListener('touchmove', handleMove);
+
+    // Start the counting interval
+    setInterval(handleCounting, 50);
+</script>
+
+
+</body>
+</html>
