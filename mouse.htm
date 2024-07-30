@@ -179,7 +179,7 @@
 	var lastDir = new stateDir();
 	
     // Variables to track if mouse is down and if it started in the center
-	let ws = new WebSocket('ws://' + location.host + '/connect-websocket');
+	//let ws = new WebSocket('ws://' + location.host + '/connect-websocket');
     var isMouseDown = false;
 	var isOverDir = false;
     var startedInCenter = false;
@@ -206,11 +206,26 @@
             updateCounters();
         }
 		if (!activeDir.isEqual(lastDir)) {
-			ws.send(JSON.stringify(activeDir));
+			//ws.send(JSON.stringify(activeDir));
+			
+			httpPutData(activeDir);	
+			
 			lastDir.setEqual(activeDir);
 		}
 
 } 
+
+async function httpPutData(Data) {
+  var url = 'http://' + location.host + '/api';
+  const response = await fetch(url, { 
+    method: 'PUT',
+    headers: { 
+      'Content-Type': 'application/json'
+    }, 
+    body: JSON.stringify(Data) 
+  });
+
+}
 	
 	// Function to detect if touch or mouse is within triangle or rectangle
 	function isTouchWithinElement(touch, element) {
